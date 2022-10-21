@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Index
+# 1. update_job - Updates git branch from jenkins job
+
+update_job(){
+    for jenkins_job in $jenkins_jobs
+    do
+        #Get job configuration
+        echo "Getting $jenkins_job configuration"
+        curl -X 'GET' "https://$jenkins_url/job/$jenkins_job/config.xml" --user "$username:$api_secret" -o job.xml > /dev/null 2>&1
+        original_job=$(cat job.xml)  
+        if grep -q "ERROR 404" "job.xml";
+        then
+            echo "CAN'T FIND JOB $jenkins_job"
+            exit 1
+        fi
+        
+        #Temporarly downgrade xml version so we can use xmlstarlet
+        sed -i "s/xml version='1.1'/xml version='1.0'/g" job.xml
+
+        #Replace job config
+        echo "Replacing target branch to $branch"
+        replacedjobconfig=$(xmlstarlet ed -u "/flow-definition/definition/scm/branches/hudson.plugins.git.BranchSpec/name" -v "$branch" job.xml ) > /dev/null 2>&1
+        # Different job xml structures require different replacement 
+        if [ "$replacedjobconfig" == "$original_job" ]; then
+            replacedjobconfig=$(xmlstarlet ed -u "/project/scm/branches/hudson.plugins.git.BranchSpec/name" -v "$branch" job.xml ) > /dev/null 2>&1
+        fi
+        echo "$replacedjobconfig" | tee jobreplaced.xml > /dev/null 2>&1
+        
+        #Rollback downgrade xml version
+        sed -i 's/xml version="1.0"/xml version="1.1"/g' jobreplaced.xml
+
+        #Upload neew configuration
+        echo "Uploading new configuration from Job $jenkins_job"
+        curl -X 'POST' "https://$jenkins_url/job/$jenkins_job/config.xml" -H "Content-Type: application/xml" --user "$username:$api_secret" --data-binary @jobreplaced.xml
+
+        #Remove operation files
+        rm job.xml jobreplaced.xml
+    done
+}
