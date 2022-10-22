@@ -1,0 +1,9 @@
+---
+# tasks file for configure-rabbit-3
+- name: Configure rabbitmq on windows node
+  include: configure-rabbit-3-windows.yml
+  when: ansible_os_family == 'Windows'
+
+- name: Configure rabbitmq on ubuntu node
+  include: configure-rabbit-3-ubuntu.yml
+  when: ansible_os_family == 'Debian'

@@ -1,0 +1,7 @@
+---
+# tasks file for install-rabbitmq
+- name: Install rabbitmq
+  win_chocolatey:
+    name: rabbitmq
+    version: '3.8.35'
+    state: present

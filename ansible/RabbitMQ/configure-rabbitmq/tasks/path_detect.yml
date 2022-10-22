@@ -1,0 +1,14 @@
+---
+# Detect Rabbit MQ version and set system paths accordingly
+- name: Determine path structure in Program Files
+  win_find:
+    paths: C:\Program Files\RabbitMQ Server
+    patterns: ['rabbitmq_server-*']
+    recurse: no
+    file_type: directory
+    use_regex: false
+  register: dirpaths
+  failed_when: dirpaths['matched'] < 1
+
+- set_fact:
+    rmq_install_path: "{{ dirpaths['files'][0]['path'] }}"

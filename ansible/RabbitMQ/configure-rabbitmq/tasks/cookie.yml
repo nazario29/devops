@@ -1,0 +1,27 @@
+- name: Detect RabbitMQ Erlang cookie location (3.6 path)
+  win_stat:
+    path: C:\Windows\.erlang.cookie
+    get_checksum: false
+  register: erlangcookiepath_36
+
+- name: Erlang cookie 3.6 pathing
+  set_fact:
+    cookie_path: C:\Windows\.erlang.cookie
+  when: erlangcookiepath_36.stat.exists == True
+
+- name: Detect RabbitMQ Erlang cookie location (3.8 path)
+  win_stat:
+    path: C:\Windows\System32\config\systemprofile\.erlang.cookie
+    get_checksum: false
+  register: erlangcookiepath_38
+
+- name: Erlang cookie 3.8 pathing
+  set_fact:
+    cookie_path: C:\Windows\System32\config\systemprofile\.erlang.cookie
+  when: cookie_path is not defined
+
+- name: Erlang cookie 3.9 pathing
+  set_fact:
+    cookie_path: C:\Windows\System32\config\systemprofile\.erlang.cookie
+  when: erlangcookiepath_38.stat.exists == True
+  

@@ -1,0 +1,152 @@
+- name: Do path detection
+  include_tasks: path_detect.yml
+
+- name: Detect Erlang Cookie Source Location
+  include_tasks: cookie.yml
+
+- name: Create Windows user's profile if it doesn't exist
+  win_user_profile:
+    username: '{{ r_user_name }}'
+    state: present
+  register: r_win_profile
+# it always returns the user's profile path in r_win_profile.path
+
+- name: Copy RabbitMQ erlang.cookie to local user profile as required
+  win_copy:
+    src: "{{ cookie_path }}"
+    dest: '{{ r_win_profile.path }}\.erlang.cookie'
+    remote_src: yes
+  ignore_errors: yes
+
+- name: (Re)Start the RabbitMQ Windows Service
+  win_command: "rabbitmq-service.bat start"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  become: yes
+  become_user: "{{ r_user_name }}"
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc > 1
+  
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Wait for RabbitMQ Service and Node to start
+  wait_for:
+    timeout: 180
+  delegate_to: localhost
+
+- name: Get RabbitMQ status
+  win_command: "rabbitmqctl.bat status"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Enable RabbitMQ management
+  win_command: "rabbitmq-plugins.bat enable rabbitmq_management"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Create RabbitMQ user
+  win_command: "rabbitmqctl.bat add_user {{ rmq_user_name }} {{ rmq_user_pass }}"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc not in [0, 70]
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Make RabbitMQ an admin
+  win_command: "rabbitmqctl.bat set_user_tags {{ rmq_user_name }} administrator"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Grant RabbitMQ all permissions
+  win_command: "rabbitmqctl.bat set_permissions -p / {{ rmq_user_name }} \".*\" \".*\" \".*\""
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Authenticate with RabbitMQ as
+  win_command: "rabbitmqctl.bat authenticate_user {{ rmq_user_name }} {{ rmq_user_pass }}"
+  args:
+    chdir: "{{ rmq_install_path }}\\sbin\\"
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+
+- debug:
+    msg:
+      - "RabbitMQ cmd stdout {{ rabbitcmd.stdout }}"
+      - "RabbitMQ cmd stderr {{ rabbitcmd.stderr }}"
+
+- name: Download RabbitMQadmin python script to local user profile
+  win_get_url:
+    url: http://localhost:15672/cli/rabbitmqadmin
+    dest: '{{ r_win_profile.path }}\rabbitmqadmin.py'
+
+- name: Create RabbitMQ Queues
+  win_shell: "py -3 rabbitmqadmin.py --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare queue name={{ item.name }} durable={{ item.durable }} auto_delete={{ item.auto_delete }}"
+  args:
+    chdir: '{{ r_win_profile.path }}'
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+  with_items: "{{ rmq_queues }}"
+  when: 'rmq_queues is defined'
+
+- name: Create RabbitMQ Exchanges
+  win_shell: "py -3 rabbitmqadmin.py --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare exchange name={{ item.name }} durable={{ item.durable }} auto_delete={{ item.auto_delete }} type={{ item.type}}"
+  args:
+    chdir: '{{ r_win_profile.path }}'
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+  with_items: "{{ rmq_exchanges }}"
+  when: 'rmq_exchanges is defined'
+
+- name: Create RabbitMQ Bindings
+  win_shell: "py -3 rabbitmqadmin.py --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare binding source={{ item.source }} destination={{ item.destination }} routing_key={{ item.routing_key }}"
+  args:
+    chdir: '{{ r_win_profile.path }}'
+    executable: cmd
+  register: rabbitcmd
+  failed_when: rabbitcmd.rc != 0
+  with_items: "{{ rmq_bindings }}"
+  when: 'rmq_bindings is defined'

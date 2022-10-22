@@ -1,0 +1,7 @@
+---
+# defaults file for configure-rabbitmq
+r_user_name: "{{ ansible_user }}"
+rmq_user_name: admin
+rmq_user_pass: admin
+rmq_exchanges:
+  - { name: 'rpc_queue', durable: 'true', auto_delete: 'false', type: 'direct' }

@@ -1,0 +1,39 @@
+- name: List users
+  shell: rabbitmqctl list_users
+  changed_when: false
+  register: rabbitmq_users
+
+- name: Create RabbitMQ user
+  shell: rabbitmqctl add_user {{ rmq_user_name }} {{ rmq_user_pass }}
+  when: rmq_user_name not in rabbitmq_users.stdout
+
+- name: Make RabbitMQ an admin
+  shell: rabbitmqctl set_user_tags {{ rmq_user_name }} administrator
+
+- name: Grant RabbitMQ all permissions
+  shell: rabbitmqctl set_permissions -p / {{ rmq_user_name }} ".*" ".*" ".*"
+
+- name: Authenticate with RabbitMQ user
+  shell: rabbitmqctl authenticate_user {{ rmq_user_name }} {{ rmq_user_pass }}
+  changed_when: false
+
+- name: Download RabbitMQadmin python script
+  get_url:
+    url: http://localhost:15672/cli/rabbitmqadmin
+    dest: /usr/local/bin/rabbitmqadmin
+    mode: '744'
+
+- name: Create RabbitMQ Queues
+  shell: rabbitmqadmin --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare queue name={{ item.name }} durable={{ item.durable }} auto_delete={{ item.auto_delete }}
+  when: rmq_queues is defined
+  loop: '{{ rmq_queues }}'
+
+- name: Create RabbitMQ Exchanges
+  shell: rabbitmqadmin --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare exchange name={{ item.name }} durable={{ item.durable }} auto_delete={{ item.auto_delete }} type={{ item.type}}
+  when: rmq_exchanges is defined
+  loop: '{{ rmq_exchanges }}'
+
+- name: Create RabbitMQ Bindings
+  shell: rabbitmqadmin --username={{ rmq_user_name }} --password={{ rmq_user_pass }} declare binding source={{ item.source }} destination={{ item.destination }} routing_key={{ item.routing_key }}
+  when: rmq_bindings is defined
+  loop: '{{ rmq_bindings }}'
